@@ -1,0 +1,41 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "group:recommended", ":preserveSemverRanges", ":label(dependencies)"],
+  "autoApprove": true,
+  "assigneesFromCodeOwners": true,
+  "reviewersFromCodeOwners": true,
+  "rebaseWhen": "behind-base-branch",
+  "schedule": ["after 6am and before 8am every weekday"],
+  "timezone": "America/New_York",
+  "minimumReleaseAge": "3 days",
+  "enabledManagers": ["github-actions", "npm"],
+  "packageRules": [
+    { "groupName": "GitHub Actions", "matchManagers": ["github-actions"] },
+    {
+      "groupName": "React",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"]
+    },
+    {
+      "groupName": "Next.js",
+      "matchPackageNames": ["next", "eslint-config-next"]
+    },
+    {
+      "groupName": "Sanity",
+      "matchPackagePatterns": ["^@sanity/", "^@portabletext/"]
+    },
+    {
+      "groupName": "Radix UI",
+      "matchPackagePatterns": ["^@radix-ui/"]
+    },
+    {
+      "groupName": "Tailwind CSS",
+      "matchPackagePatterns": ["^tailwindcss$", "^@tailwindcss/"]
+    },
+    {
+      "groupName": "TypeScript",
+      "matchPackageNames": ["typescript", "@types/node"]
+    }
+  ],
+  "github-actions": { "enabled": true },
+  "npm": { "enabled": true }
+}

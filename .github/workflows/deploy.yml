@@ -1,0 +1,102 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_WEBAPP_NAME: 'app-schoolcal-marketing-prod'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      url: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SANITY_PROJECT_ID: ${{ vars.NEXT_PUBLIC_SANITY_PROJECT_ID }}
+          NEXT_PUBLIC_SANITY_DATASET: ${{ vars.NEXT_PUBLIC_SANITY_DATASET }}
+
+      - name: Prepare deployment package
+        run: |
+          # Debug: show standalone structure
+          echo "Standalone structure:"
+          find .next/standalone -type f -name "server.js" 2>/dev/null
+
+          # Next.js standalone preserves the full build path
+          # Find the directory containing server.js (excluding node_modules)
+          SERVER_JS=$(find .next/standalone -type f -name "server.js" -not -path "*/node_modules/*" | head -1)
+
+          if [ -z "$SERVER_JS" ]; then
+            echo "ERROR: server.js not found in standalone output"
+            exit 1
+          fi
+
+          STANDALONE_DIR=$(dirname "$SERVER_JS")
+          echo "Found server.js at: $SERVER_JS"
+          echo "Standalone directory: $STANDALONE_DIR"
+
+          echo "Contents of standalone directory:"
+          ls -la "$STANDALONE_DIR"
+
+          # Copy static files to standalone directory
+          cp -r .next/static "$STANDALONE_DIR/.next/"
+          cp -r public "$STANDALONE_DIR/"
+
+          # Create zip from the standalone directory
+          cd "$STANDALONE_DIR"
+          zip -r "$GITHUB_WORKSPACE/deploy.zip" .
+
+          # Debug: show zip contents
+          echo "Zip contents (first 30 lines):"
+          unzip -l "$GITHUB_WORKSPACE/deploy.zip" | head -30
+
+          # Verify server.js is in the zip
+          echo "Checking for server.js in zip:"
+          unzip -l "$GITHUB_WORKSPACE/deploy.zip" | grep "server.js" || echo "WARNING: server.js not found in zip!"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Web App
+        run: |
+          az webapp deploy \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group SchoolSyncProduction \
+            --src-path deploy.zip \
+            --type zip \
+            --clean true \
+            --async true
+
+      - name: Summary
+        run: |
+          echo "## Deployment Complete :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**App Service:** ${{ env.AZURE_WEBAPP_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
